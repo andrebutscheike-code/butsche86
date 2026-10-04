@@ -82,7 +82,8 @@ def pub_zu_pdf(soffice, pub, arbeitsordner, profil):
     cmd += ["--convert-to", "pdf:draw_pdf_Export", "--outdir", str(ausgabe), str(pub)]
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     try:
-        ergebnis = subprocess.run(cmd, capture_output=True, text=True, timeout=LIBREOFFICE_TIMEOUT, creationflags=flags)
+        ergebnis = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                  timeout=LIBREOFFICE_TIMEOUT, creationflags=flags)
     except subprocess.TimeoutExpired:
         raise KonvertierungsFehler(f"LibreOffice hat nach {LIBREOFFICE_TIMEOUT} s nicht geantwortet.")
     pdf = ausgabe / (Path(pub).stem + ".pdf")
@@ -287,6 +288,10 @@ def starte_gui():
 
 
 def main():
+    # Als Fenster-Programm (.exe ohne Konsole) gibt es keine Standard-Ausgabe
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name) is None:
+            setattr(sys, name, open(os.devnull, "w"))
     parser = argparse.ArgumentParser(description="Publisher-Dateien (.pub) in Word (.docx) umwandeln.")
     parser.add_argument("pfade", nargs="*", help=".pub-Dateien oder Ordner (ohne Angabe startet die grafische Oberfläche)")
     parser.add_argument("-o", "--ausgabe", help="Zielordner (Standard: neben der Original-Datei)")

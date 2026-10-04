@@ -1,0 +1,26 @@
+name: Windows-EXE bauen
+
+on:
+  push:
+    paths:
+      - pub2docx.py
+      - requirements.txt
+      - .github/workflows/build-exe.yml
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: >
+          pyinstaller --onefile --windowed --name Publisher-nach-Word
+          --collect-data docx --collect-submodules pdf2docx pub2docx.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Publisher-nach-Word
+          path: dist/Publisher-nach-Word.exe

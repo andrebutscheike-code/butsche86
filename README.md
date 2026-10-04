@@ -4,10 +4,17 @@ Wandelt Microsoft-Publisher-Dateien (`.pub`) in Word-Dateien (`.docx`) um – un
 
 Ablauf je Datei: `.pub` → PDF (LibreOffice im Hintergrund) → `.docx`.
 
-## Voraussetzungen
+## Variante ohne Python: fertige EXE (Windows)
+
+GitHub baut bei jeder Änderung an `pub2docx.py` automatisch eine `Publisher-nach-Word.exe`:
+Im Repository auf **Actions** → **Windows-EXE bauen** → neuester erfolgreicher Lauf → unten unter **Artifacts** `Publisher-nach-Word` herunterladen, entpacken, doppelklicken. Python ist dafür nicht nötig, **LibreOffice schon**. Die Datei ist rund 100 MB groß. Beim ersten Start warnt Windows Defender SmartScreen möglicherweise („Weitere Informationen“ → „Trotzdem ausführen“), weil die Datei nicht signiert ist.
+
+Die EXE hat nur die grafische Oberfläche. Für die Kommandozeile `pub2docx.py` mit Python verwenden.
+
+## Voraussetzungen (nur für `pub2docx.py`)
 
 1. [Python](https://www.python.org/downloads/) ab Version 3.9. Bei der Installation „Add python.exe to PATH“ anhaken.
-2. [LibreOffice](https://www.libreoffice.org/download/) (kostenlos). Es muss nur installiert sein, nicht geöffnet.
+2. [LibreOffice](https://www.libreoffice.org/download/) (kostenlos, wird auch für die EXE benötigt). Es muss nur installiert sein, nicht geöffnet.
 
 ## Installation (Windows)
 
