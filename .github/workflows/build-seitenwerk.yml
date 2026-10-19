@@ -33,9 +33,13 @@ jobs:
           $ordner = Join-Path $PWD "selbsttest-ausgabe"
           New-Item -ItemType Directory -Force -Path $ordner | Out-Null
           $p = Start-Process -FilePath ".\publish\Seitenwerk.exe" -ArgumentList @("--selbsttest", $ordner) -PassThru
-          if (-not $p.WaitForExit(240000)) { $p.Kill(); Write-Host "Zeitüberschreitung im Selbsttest"; $code = 99 } else { $code = $p.ExitCode }
-          if (Test-Path "$ordner\selbsttest.log") { Get-Content "$ordner\selbsttest.log" } else { Write-Host "Kein Protokoll geschrieben" }
-          if ($code -ne 0) { Write-Host "Selbsttest fehlgeschlagen, Exitcode $code"; exit 1 }
+          $null = $p.Handle   # Handle zwischenspeichern, damit ExitCode nach dem Ende lesbar bleibt
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); Write-Host "Zeitüberschreitung im Selbsttest"; $code = 99 } else { $p.WaitForExit(); $code = $p.ExitCode }
+          Get-ChildItem $ordner | Format-Table Name, Length
+          $log = Join-Path $ordner "selbsttest.log"
+          if (Test-Path $log) { Get-Content $log } else { Write-Host "Kein Protokoll geschrieben" }
+          Write-Host "Exitcode: $code"
+          if ($code -ne 0) { Write-Host "Selbsttest fehlgeschlagen"; exit 1 }
 
       - name: Ergebnis des Selbsttests hochladen
         if: always()

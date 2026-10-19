@@ -19,13 +19,22 @@ namespace Seitenwerk.Werkzeuge;
 /// </summary>
 internal static class Selbsttest
 {
-    private static readonly StringBuilder Protokoll = new();
+    private static string _logDatei = "";
     private static int _fehler;
 
     private static void Zeile(string text)
     {
-        Protokoll.AppendLine(text);
-        Console.Out.WriteLine(text);
+        // Sofort in die Datei schreiben, damit auch bei einem Absturz sichtbar bleibt, wie weit der Test kam.
+        if (_logDatei.Length > 0)
+        {
+            try
+            {
+                File.AppendAllText(_logDatei, text + Environment.NewLine, Encoding.UTF8);
+            }
+            catch (IOException)
+            {
+            }
+        }
     }
 
     private static void Pruefe(bool bedingung, string beschreibung)
@@ -50,6 +59,11 @@ internal static class Selbsttest
     public static void Starten(Application app, string ausgabe)
     {
         Directory.CreateDirectory(ausgabe);
+        _logDatei = Path.Combine(ausgabe, "selbsttest.log");
+        File.WriteAllText(_logDatei, "Selbsttest gestartet" + Environment.NewLine, Encoding.UTF8);
+        // Die Anwendung wird erst am Ende ausdrücklich beendet. Würde das letzte Fenster schon vorher schließen,
+        // käme der Abschluss (Protokoll, Exitcode) nicht mehr zur Ausführung.
+        app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         app.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, async () =>
         {
             try
@@ -63,7 +77,6 @@ internal static class Selbsttest
             finally
             {
                 Zeile(_fehler == 0 ? "ERGEBNIS: alle Prüfungen bestanden" : $"ERGEBNIS: {_fehler} Fehler");
-                File.WriteAllText(Path.Combine(ausgabe, "selbsttest.log"), Protokoll.ToString(), Encoding.UTF8);
                 app.Shutdown(_fehler == 0 ? 0 : 1);
             }
         });
@@ -356,6 +369,5 @@ internal static class Selbsttest
 
         // Änderungen verwerfen, damit das Schließen nicht nachfragt
         editor.NeuesDokument(Dokument.Neu(), null, false);
-        fenster.Close();
     }
 }
