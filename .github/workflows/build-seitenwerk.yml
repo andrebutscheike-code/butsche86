@@ -18,6 +18,14 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: LibreOffice installieren (für den Test mit echten Publisher-Dateien)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          choco install libreoffice-fresh -y --no-progress
+          $soffice = "C:\Program Files\LibreOffice\program\soffice.exe"
+          if (Test-Path $soffice) { "SEITENWERK_LO_ERFORDERLICH=1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8; Write-Host "LibreOffice gefunden: $soffice" } else { Write-Host "LibreOffice nicht installiert" }
+
       - name: Tests (Modell, Speichern, Import, PDF)
         run: dotnet test Seitenwerk/tests/Seitenwerk.Tests -c Release --logger "console;verbosity=normal"
 
@@ -29,6 +37,8 @@ jobs:
 
       - name: Selbsttest (Fenster aufbauen, Seiten rendern, Befehle ausführen)
         shell: pwsh
+        env:
+          SEITENWERK_TEST_PUBS: ${{ github.workspace }}\Seitenwerk\tests\Seitenwerk.Tests\Testdaten
         run: |
           $ordner = Join-Path $PWD "selbsttest-ausgabe"
           New-Item -ItemType Directory -Force -Path $ordner | Out-Null

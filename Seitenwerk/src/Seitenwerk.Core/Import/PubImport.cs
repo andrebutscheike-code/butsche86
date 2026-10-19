@@ -87,7 +87,7 @@ public static class PubImport
         try
         {
             var odg = await NachOdgAsync(pubPfad, sofficePfad, arbeitsOrdner, abbruch).ConfigureAwait(false);
-            var ergebnis = OdgImporter.Importieren(odg);
+            var ergebnis = OdgImporter.Importieren(odg, ausPublisher: Path.GetExtension(pubPfad).Equals(".pub", StringComparison.OrdinalIgnoreCase));
             ergebnis.Dokument.Titel = Path.GetFileNameWithoutExtension(pubPfad);
             return ergebnis;
         }

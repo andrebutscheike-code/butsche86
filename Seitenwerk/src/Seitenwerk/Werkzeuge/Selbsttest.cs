@@ -6,6 +6,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Seitenwerk.Core.Bearbeiten;
 using Seitenwerk.Core.Dateiformat;
+using Seitenwerk.Core.Import;
 using Seitenwerk.Core.Modell;
 using Seitenwerk.Darstellung;
 using Seitenwerk.Dialoge;
@@ -133,6 +134,7 @@ internal static class Selbsttest
 
         var png = dok.MediumHinzufuegen(TestBild(true), "png");
         seite.Objekte.Add(new BildObjekt { MedienId = png.Id, X = 15, Y = 185, Breite = 72, Hoehe = 48, Seitenverhaeltnis = 1.5, Rahmenfarbe = "#404040", Rahmenbreite = 1 });
+        seite.Objekte.Add(new FormObjekt { Form = FormArt.Ellipse, X = 100, Y = 245, Breite = 40, Hoehe = 40, FuellungBildId = png.Id, Rahmenfarbe = null });
         var jpg = dok.MediumHinzufuegen(TestBild(false), "jpg");
         seite.Objekte.Add(new BildObjekt { MedienId = jpg.Id, X = 100, Y = 185, Breite = 72, Hoehe = 48, Seitenverhaeltnis = 1.5, Drehung = 8, BeschnittLinks = 0.1 });
 
@@ -402,6 +404,35 @@ internal static class Selbsttest
         var endBild = new RenderTargetBitmap((int)fenster.ActualWidth, (int)fenster.ActualHeight, 96, 96, PixelFormats.Pbgra32);
         endBild.Render(fenster);
         File.WriteAllBytes(Path.Combine(ausgabe, "fenster-ende.png"), Exporter.AlsPng(endBild));
+
+        // ------------------------------------------------ Echte Publisher-Dateien (nur mit LibreOffice und Testdateien)
+        var pubOrdner = Environment.GetEnvironmentVariable("SEITENWERK_TEST_PUBS");
+        if (!string.IsNullOrEmpty(pubOrdner) && Directory.Exists(pubOrdner) && PubImport.FindeLibreOffice() != null)
+        {
+            foreach (var pub in Directory.GetFiles(pubOrdner, "*.pub").OrderBy(f => f))
+            {
+                var name = Path.GetFileNameWithoutExtension(pub);
+                await fenster.OeffneDateiAsync(pub, ohneNachfrage: true);
+                await Ruhe(app);
+                var geoeffnet = editor.Dokument;
+                var objekte = geoeffnet.Seiten.SelectMany(s => s.Alle()).Count();
+                Pruefe(geoeffnet.Seiten.Count >= 1 && objekte > 0, $"{name}.pub geöffnet: {geoeffnet.Seiten.Count} Seiten, {objekte} Objekte, {geoeffnet.Medien.Count} Bilder");
+                Pruefe(fenster.Ansichten.Count == geoeffnet.Seiten.Count, $"{name}.pub: Seitenansichten aufgebaut");
+
+                var nichtDekodierbar = geoeffnet.Medien.Where(m => BildCache.Hole(m) == null).Select(m => m.Endung).ToList();
+                Pruefe(nichtDekodierbar.Count == 0, $"{name}.pub: alle Bilder lassen sich darstellen" + (nichtDekodierbar.Count > 0 ? " (nicht: " + string.Join(", ", nichtDekodierbar) + ")" : ""));
+
+                var bild = Exporter.RenderSeite(geoeffnet, geoeffnet.Seiten[0], 100);
+                File.WriteAllBytes(Path.Combine(ausgabe, $"pub-{name}-seite1.png"), Exporter.AlsPng(bild));
+                Pruefe(NichtWeisse(bild) > 5000, $"{name}.pub: Seite 1 gerendert");
+                Zeile($"{name}.pub Seite 1 (grob):");
+                Zeile(Ascii(bild, 110, 52));
+            }
+        }
+        else
+        {
+            Zeile("HINWEIS  Echte Publisher-Dateien nicht getestet (LibreOffice oder SEITENWERK_TEST_PUBS fehlt)");
+        }
 
         // Änderungen verwerfen, damit das Schließen nicht nachfragt
         editor.NeuesDokument(Dokument.Neu(), null, false);

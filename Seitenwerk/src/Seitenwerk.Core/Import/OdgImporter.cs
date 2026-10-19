@@ -13,18 +13,20 @@ namespace Seitenwerk.Core.Import;
 /// </summary>
 public static class OdgImporter
 {
-    public static ImportErgebnis Importieren(string pfad)
+    public static ImportErgebnis Importieren(string pfad, bool ausPublisher = false)
     {
         using var datei = File.OpenRead(pfad);
-        return Importieren(datei, Path.GetFileNameWithoutExtension(pfad));
+        return Importieren(datei, Path.GetFileNameWithoutExtension(pfad), ausPublisher);
     }
 
-    public static ImportErgebnis Importieren(Stream stream, string? titel = null)
+    /// <param name="ausPublisher">Die Zeichnung stammt aus einer Publisher-Datei: Textrahmen behalten ihre ursprüngliche Größe,
+    /// auch wenn LibreOffice sie wegen überlangem Text vergrößert hat (Publisher blendet Überlauf aus).</param>
+    public static ImportErgebnis Importieren(Stream stream, string? titel = null, bool ausPublisher = false)
     {
         try
         {
             using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
-            return new OdgLeser(zip).Lesen(titel);
+            return new OdgLeser(zip, ausPublisher).Lesen(titel);
         }
         catch (InvalidDataException ex)
         {
@@ -61,6 +63,7 @@ internal sealed class OdgStil
     public readonly Dictionary<string, string> Text = new();
     public readonly Dictionary<string, string> Absatz = new();
     public readonly Dictionary<string, string> Seite = new();
+    public readonly Dictionary<string, string> Tabelle = new();
 }
 
 internal sealed class OdgLeser
@@ -73,6 +76,7 @@ internal sealed class OdgLeser
     private static readonly XNamespace Svg = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0";
     private static readonly XNamespace Xlink = "http://www.w3.org/1999/xlink";
     private static readonly XNamespace Presentation = "urn:oasis:names:tc:opendocument:xmlns:presentation:1.0";
+    private static readonly XNamespace Tabellen = "urn:oasis:names:tc:opendocument:xmlns:table:1.0";
 
     private static readonly HashSet<string> ErlaubteStilNamensraeume = new()
     {
@@ -84,13 +88,19 @@ internal sealed class OdgLeser
     private readonly Dictionary<string, OdgStil> _standard = new();
     private readonly Dictionary<string, string> _schriften = new();
     private readonly Dictionary<string, (string Start, string Ende)> _verlaeufe = new();
+    private readonly Dictionary<string, string> _fuellBilder = new();
     private readonly Dictionary<string, XElement> _masterSeiten = new();
     private readonly Dictionary<string, XElement> _seitenLayouts = new();
     private readonly Dictionary<string, Medium> _medien = new();
     private readonly List<string> _hinweise = new();
+    private readonly bool _ausPublisher;
     private Dokument _dokument = new();
 
-    public OdgLeser(ZipArchive zip) => _zip = zip;
+    public OdgLeser(ZipArchive zip, bool ausPublisher)
+    {
+        _zip = zip;
+        _ausPublisher = ausPublisher;
+    }
 
     public ImportErgebnis Lesen(string? titel)
     {
@@ -162,6 +172,14 @@ internal sealed class OdgLeser
                 _verlaeufe[name] = (start, ende);
         }
 
+        foreach (var f in wurzel.Descendants(Draw + "fill-image"))
+        {
+            var name = (string?)f.Attribute(Draw + "name");
+            var href = (string?)f.Attribute(Xlink + "href");
+            if (name != null && href != null)
+                _fuellBilder[name] = href;
+        }
+
         foreach (var m in wurzel.Descendants(Style + "master-page"))
         {
             var name = (string?)m.Attribute(Style + "name");
@@ -211,6 +229,9 @@ internal sealed class OdgLeser
                 ziel = stil.Absatz;
             else if (kind.Name == Style + "drawing-page-properties")
                 ziel = stil.Seite;
+            else if (kind.Name == Style + "table-column-properties" || kind.Name == Style + "table-row-properties"
+                     || kind.Name == Style + "table-cell-properties" || (kind.Name.LocalName == "graphic-properties" && familie == "table-cell"))
+                ziel = stil.Tabelle;
             if (ziel == null)
                 continue;
             foreach (var a in kind.Attributes())
@@ -483,8 +504,12 @@ internal sealed class OdgLeser
                         Hinweis("Farbverläufe wurden durch eine einfarbige Füllung ersetzt.");
                     break;
                 case "bitmap":
+                    if (g.TryGetValue("fill-image-name", out var bildName) && _fuellBilder.TryGetValue(bildName, out var bildHref)
+                        && LadeMedium(bildHref, null) is { } fuellMedium)
+                        objekt.FuellungBildId = fuellMedium.Id;
+                    break;
                 case "hatch":
-                    Hinweis("Bild- und Schraffurfüllungen werden nicht unterstützt und wurden entfernt.");
+                    Hinweis("Schraffurfüllungen werden nicht unterstützt und wurden entfernt.");
                     break;
             }
         }
@@ -538,7 +563,15 @@ internal sealed class OdgLeser
         var g = Aufloesen("graphic", (string?)e.Attribute(Draw + "style-name"), s => s.Grafik, true);
 
         var textBox = e.Element(Draw + "text-box");
+        var tabelle = e.Element(Tabellen + "table");
         var bild = e.Element(Draw + "image");
+
+        // Tabellen enthalten zusätzlich ein Vorschaubild; maßgeblich ist die Tabelle selbst.
+        if (tabelle != null)
+        {
+            TabelleLesen(e, tabelle, g, eltern, ziel);
+            return;
+        }
 
         if (bild != null)
         {
@@ -549,9 +582,14 @@ internal sealed class OdgLeser
         if (textBox != null)
         {
             var lage = Lage(e, eltern, g);
+            var hoehe = lage.H;
+            // LibreOffice vergrößert Textrahmen, wenn der Text nicht hineinpasst. Die ursprüngliche Rahmenhöhe steht in "min-height";
+            // Publisher blendet überlaufenden Text aus, deshalb gilt diese Höhe.
+            if (_ausPublisher && lage.Drehung == 0 && Laenge(g.GetValueOrDefault("min-height")) is { } mindest && mindest > 1 && hoehe > mindest * 1.05)
+                hoehe = mindest;
             var feld = new TextfeldObjekt
             {
-                X = lage.X, Y = lage.Y, Breite = lage.B, Hoehe = lage.H, Drehung = lage.Drehung,
+                X = lage.X, Y = lage.Y, Breite = lage.B, Hoehe = hoehe, Drehung = lage.Drehung,
                 Innenabstand = Math.Round(Laenge(g.GetValueOrDefault("padding-left")) ?? 2.5, 2),
                 VertikaleAusrichtung = VertikalAus(g),
             };
@@ -562,7 +600,126 @@ internal sealed class OdgLeser
         }
 
         if (e.Element(Draw + "object") != null || e.Element(Draw + "object-ole") != null || e.Element(Draw + "plugin") != null)
-            Hinweis("Eingebettete Objekte (z. B. Tabellen oder Diagramme) werden nicht unterstützt.");
+            Hinweis("Eingebettete Objekte (z. B. Diagramme) werden nicht unterstützt.");
+    }
+
+    // ---------------------------------------------------------------- Tabellen
+
+    private double Breiten(IEnumerable<double> werte, int von, int anzahl) => werte.Skip(von).Take(anzahl).Sum();
+
+    /// <summary>Wandelt eine Tabelle in eine Gruppe von Textfeldern um (eine Zelle = ein Textfeld), weil Seitenwerk keine Tabellen kennt.</summary>
+    private void TabelleLesen(XElement rahmen, XElement tabelle, Dictionary<string, string> g, Matrix eltern, List<Objekt> ziel)
+    {
+        var lage = Lage(rahmen, eltern, g);
+
+        var spalten = new List<double>();
+        foreach (var spalte in tabelle.Descendants(Tabellen + "table-column"))
+        {
+            var wiederholt = int.TryParse((string?)spalte.Attribute(Tabellen + "number-columns-repeated"), out var n) ? Math.Clamp(n, 1, 200) : 1;
+            var eigenschaften = Aufloesen("table-column", (string?)spalte.Attribute(Tabellen + "style-name"), st => st.Tabelle, false);
+            var breite = Laenge(eigenschaften.GetValueOrDefault("column-width")) ?? 0;
+            for (var i = 0; i < wiederholt; i++)
+                spalten.Add(breite);
+        }
+
+        var zeilen = tabelle.Descendants(Tabellen + "table-row").ToList();
+        if (spalten.Count == 0 || zeilen.Count == 0)
+        {
+            Hinweis("Eine leere Tabelle wurde ausgelassen.");
+            return;
+        }
+        if (spalten.All(b => b <= 0))
+            spalten = spalten.Select(_ => lage.B / spalten.Count).ToList();
+
+        var hoehen = new List<double>();
+        foreach (var zeile in zeilen)
+        {
+            var eigenschaften = Aufloesen("table-row", (string?)zeile.Attribute(Tabellen + "style-name"), st => st.Tabelle, false);
+            var h = Laenge(eigenschaften.GetValueOrDefault("row-height")) ?? Laenge(eigenschaften.GetValueOrDefault("min-row-height")) ?? lage.H / zeilen.Count;
+            var wiederholt = int.TryParse((string?)zeile.Attribute(Tabellen + "number-rows-repeated"), out var n) ? Math.Clamp(n, 1, 200) : 1;
+            if (wiederholt > 1)
+                Hinweis("Wiederholte Tabellenzeilen wurden nur einmal übernommen.");
+            hoehen.Add(h);
+        }
+
+        var zellen = new List<Objekt>();
+        var y = lage.Y;
+        for (var zeilenNr = 0; zeilenNr < zeilen.Count; zeilenNr++)
+        {
+            var spaltenNr = 0;
+            var zeilenStil = (string?)zeilen[zeilenNr].Attribute(Tabellen + "default-cell-style-name");
+            foreach (var zelle in zeilen[zeilenNr].Elements())
+            {
+                var wiederholt = int.TryParse((string?)zelle.Attribute(Tabellen + "number-columns-repeated"), out var rep) ? Math.Clamp(rep, 1, 200) : 1;
+                if (zelle.Name != Tabellen + "table-cell")
+                {
+                    spaltenNr += wiederholt; // verdeckte Zelle einer verbundenen Zelle
+                    continue;
+                }
+
+                var spannBreite = int.TryParse((string?)zelle.Attribute(Tabellen + "number-columns-spanned"), out var cs) ? Math.Max(1, cs) : 1;
+                var spannHoehe = int.TryParse((string?)zelle.Attribute(Tabellen + "number-rows-spanned"), out var rs) ? Math.Max(1, rs) : 1;
+                var stilName = (string?)zelle.Attribute(Tabellen + "style-name") ?? zeilenStil;
+                var zellStil = Aufloesen("table-cell", stilName, st => st.Tabelle, false);
+
+                for (var k = 0; k < wiederholt; k++)
+                {
+                    var feld = ZelleLesen(zelle, zellStil, rahmen, g);
+                    if (feld != null)
+                    {
+                        feld.X = lage.X + Breiten(spalten, 0, spaltenNr);
+                        feld.Y = y;
+                        feld.Breite = Breiten(spalten, spaltenNr, spannBreite);
+                        feld.Hoehe = Breiten(hoehen, zeilenNr, spannHoehe);
+                        zellen.Add(feld);
+                    }
+                    spaltenNr += spannBreite;
+                }
+            }
+            y += hoehen[zeilenNr];
+        }
+
+        Hinweis("Tabellen wurden in Textfelder umgewandelt (eine Zelle = ein Textfeld).");
+        if (zellen.Count == 1)
+            ziel.Add(zellen[0]);
+        else if (zellen.Count > 1)
+            ziel.Add(GruppeObjekt.Aus(zellen).Mit(t => t.Name = "Tabelle"));
+    }
+
+    private TextfeldObjekt? ZelleLesen(XElement zelle, Dictionary<string, string> stil, XElement rahmen, Dictionary<string, string> g)
+    {
+        var feld = new TextfeldObjekt
+        {
+            Innenabstand = Math.Round(Laenge(stil.GetValueOrDefault("padding-left")) ?? Laenge(stil.GetValueOrDefault("padding")) ?? 1, 2),
+            VertikaleAusrichtung = stil.GetValueOrDefault("vertical-align") switch
+            {
+                "middle" => VertikaleAusrichtung.Mitte,
+                "bottom" => VertikaleAusrichtung.Unten,
+                _ => VertikaleAusrichtung.Oben,
+            },
+        };
+
+        var fuellung = Farbe(stil.GetValueOrDefault("background-color"));
+        if (fuellung == null && stil.GetValueOrDefault("fill") == "solid")
+            fuellung = Farbe(stil.GetValueOrDefault("fill-color"));
+        feld.Fuellung = fuellung;
+
+        foreach (var schluessel in new[] { "border", "border-top", "border-left", "border-bottom", "border-right" })
+        {
+            if (!stil.TryGetValue(schluessel, out var rand) || rand == "none")
+                continue;
+            var teile = rand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var breite = teile.Select(t => Punkt(t)).FirstOrDefault(w => w != null);
+            var farbe = teile.Select(Farbe).FirstOrDefault(f => f != null);
+            if (teile.Contains("none") || teile.Contains("hidden"))
+                continue;
+            feld.Rahmenfarbe = farbe ?? "#000000";
+            feld.Rahmenbreite = Math.Max(0.25, Math.Round(breite ?? 0.75, 2));
+            break;
+        }
+
+        feld.Absaetze = LeseText(zelle, rahmen, g);
+        return feld.HatText || feld.Fuellung != null || feld.Rahmenfarbe != null ? feld : null;
     }
 
     private static VertikaleAusrichtung VertikalAus(Dictionary<string, string> g) =>
@@ -711,19 +868,19 @@ internal sealed class OdgLeser
 
     // ---------------------------------------------------------------- Bilder
 
-    private void BildLesen(XElement rahmen, XElement bildElement, Dictionary<string, string> g, Matrix eltern, List<Objekt> ziel)
-    {
-        var lage = Lage(rahmen, eltern, g);
-        var href = (string?)bildElement.Attribute(Xlink + "href");
-        byte[]? daten = null;
-        string endung = "png";
+    private static readonly HashSet<string> UnterstuetzteBildformate = new() { "png", "jpg", "gif", "bmp", "tif", "emf", "wmf" };
 
-        var binaer = bildElement.Element(Office + "binary-data")?.Value;
-        if (!string.IsNullOrWhiteSpace(binaer))
+    /// <summary>Liest ein Bild aus dem Paket (oder eingebetteten Base64-Daten) und legt es als Medium an. Unbekannte Formate ergeben null und einen Hinweis.</summary>
+    private Medium? LadeMedium(string? href, string? base64)
+    {
+        byte[]? daten = null;
+        var endung = "";
+
+        if (!string.IsNullOrWhiteSpace(base64))
         {
             try
             {
-                daten = Convert.FromBase64String(binaer);
+                daten = Convert.FromBase64String(base64);
             }
             catch (FormatException)
             {
@@ -747,16 +904,34 @@ internal sealed class OdgLeser
         if (daten == null || daten.Length == 0)
         {
             Hinweis("Ein Bild konnte nicht aus der Datei gelesen werden (verknüpfte Bilder werden nicht unterstützt).");
-            return;
+            return null;
         }
 
-        endung = BildFormat.Erkennen(daten) ?? (endung.Length > 0 ? endung : "png");
+        var format = BildFormat.Erkennen(daten) ?? endung;
+        if (format == "jpeg")
+            format = "jpg";
+        if (!UnterstuetzteBildformate.Contains(format))
+        {
+            Hinweis($"Grafiken im Format „{(format.Length > 0 ? format.ToUpperInvariant() : "unbekannt")}“ werden nicht unterstützt und wurden ausgelassen.");
+            return null;
+        }
+
         var schluessel = href ?? Convert.ToHexString(daten.AsSpan(0, Math.Min(32, daten.Length)));
         if (!_medien.TryGetValue(schluessel, out var medium))
         {
-            medium = _dokument.MediumHinzufuegen(daten, endung);
+            medium = _dokument.MediumHinzufuegen(daten, format);
             _medien[schluessel] = medium;
         }
+        return medium;
+    }
+
+    private void BildLesen(XElement rahmen, XElement bildElement, Dictionary<string, string> g, Matrix eltern, List<Objekt> ziel)
+    {
+        var lage = Lage(rahmen, eltern, g);
+        var medium = LadeMedium((string?)bildElement.Attribute(Xlink + "href"), bildElement.Element(Office + "binary-data")?.Value);
+        if (medium == null)
+            return;
+        var daten = medium.Daten;
 
         var bild = new BildObjekt
         {

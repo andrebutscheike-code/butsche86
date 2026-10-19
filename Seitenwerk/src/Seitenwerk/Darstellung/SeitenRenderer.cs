@@ -37,10 +37,10 @@ public static class SeitenRenderer
         switch (objekt)
         {
             case TextfeldObjekt textfeld:
-                ZeichneTextfeld(dc, textfeld, optionen);
+                ZeichneTextfeld(dc, dokument, textfeld, optionen);
                 break;
             case FormObjekt form:
-                ZeichneForm(dc, form, optionen);
+                ZeichneForm(dc, dokument, form, optionen);
                 break;
             case LinieObjekt linie:
                 ZeichneLinie(dc, linie);
@@ -49,7 +49,7 @@ public static class SeitenRenderer
                 ZeichneBild(dc, dokument, bild);
                 break;
             case PfadObjekt pfad:
-                ZeichnePfad(dc, pfad);
+                ZeichnePfad(dc, dokument, pfad);
                 break;
             case GruppeObjekt gruppe:
                 foreach (var kind in gruppe.Kinder)
@@ -91,10 +91,22 @@ public static class SeitenRenderer
 
     // ---------------------------------------------------------------- Textfelder und Formen
 
-    private static void ZeichneTextfeld(DrawingContext dc, TextfeldObjekt feld, RenderOptionen optionen)
+    /// <summary>Füllpinsel eines Objekts: das Füllbild (gedehnt), sonst die Füllfarbe.</summary>
+    private static Brush? FuellPinsel(Dokument dokument, FlaechenObjekt objekt)
+    {
+        if (objekt.FuellungBildId != null && BildCache.Hole(dokument.FindeMedium(objekt.FuellungBildId)) is { } bild)
+        {
+            var pinsel = new ImageBrush(bild) { Stretch = Stretch.Fill, Opacity = Math.Clamp(objekt.Deckkraft, 0, 1) };
+            pinsel.Freeze();
+            return pinsel;
+        }
+        return Farben.Pinsel(objekt.Fuellung, objekt.Deckkraft);
+    }
+
+    private static void ZeichneTextfeld(DrawingContext dc, Dokument dokument, TextfeldObjekt feld, RenderOptionen optionen)
     {
         var rechteck = RechteckVon(feld);
-        var fuellung = Farben.Pinsel(feld.Fuellung, feld.Deckkraft);
+        var fuellung = FuellPinsel(dokument, feld);
         var stift = Stift(feld.Rahmenfarbe, feld.Rahmenbreite, feld.Rahmenart);
 
         if (fuellung != null || stift != null)
@@ -114,10 +126,10 @@ public static class SeitenRenderer
         return stift;
     }
 
-    private static void ZeichneForm(DrawingContext dc, FormObjekt form, RenderOptionen optionen)
+    private static void ZeichneForm(DrawingContext dc, Dokument dokument, FormObjekt form, RenderOptionen optionen)
     {
         var r = RechteckVon(form);
-        var fuellung = Farben.Pinsel(form.Fuellung, form.Deckkraft);
+        var fuellung = FuellPinsel(dokument, form);
         var stift = Stift(form.Rahmenfarbe, form.Rahmenbreite, form.Rahmenart);
 
         switch (form.Form)
@@ -175,11 +187,14 @@ public static class SeitenRenderer
             _ => innen.Y,
         };
 
+        // Wie in Publisher wird Text außerhalb des Rahmens nicht gezeigt; im Editor weist die rote Marke auf den Überlauf hin.
+        dc.PushClip(new RectangleGeometry(rechteck));
         foreach (var zeile in zeilen)
         {
             dc.DrawText(zeile.Text, new Point(innen.X, y));
             y += zeile.Hoehe + zeile.AbstandNach;
         }
+        dc.Pop();
 
         if (optionen.Hilfen && hoehe > innen.Height + 0.5)
             ZeichneUeberlaufMarke(dc, rechteck);
@@ -319,7 +334,7 @@ public static class SeitenRenderer
         return geometrie;
     }
 
-    private static void ZeichnePfad(DrawingContext dc, PfadObjekt pfad)
+    private static void ZeichnePfad(DrawingContext dc, Dokument dokument, PfadObjekt pfad)
     {
         var geometrie = PfadGeometrie(pfad.Daten);
         if (geometrie == null || pfad.ViewBreite <= 0 || pfad.ViewHoehe <= 0)
@@ -329,7 +344,7 @@ public static class SeitenRenderer
         var sy = pfad.Hoehe / pfad.ViewHoehe;
         var matrix = new Matrix(sx, 0, 0, sy, pfad.X - pfad.ViewX * sx, pfad.Y - pfad.ViewY * sy);
 
-        var fuellung = Farben.Pinsel(pfad.Fuellung, pfad.Deckkraft);
+        var fuellung = FuellPinsel(dokument, pfad);
         var stift = Stift(pfad.Rahmenfarbe, pfad.Rahmenbreite, pfad.Rahmenart);
         if (stift != null)
         {

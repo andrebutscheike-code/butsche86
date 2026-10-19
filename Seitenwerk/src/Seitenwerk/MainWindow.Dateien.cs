@@ -163,6 +163,8 @@ public partial class MainWindow
     {
         Editor.ImportHinweise.Clear();
         Editor.ImportHinweise.AddRange(ergebnis.Hinweise);
+        if (App.Selbsttest)
+            return; // Im automatischen Test gibt es niemanden, der ein Meldungsfenster schließt.
 
         var text = new StringBuilder();
         text.AppendLine($"„{Path.GetFileName(pfad)}“ wurde {weg} geöffnet ({ergebnis.Dokument.Seiten.Count} Seite{(ergebnis.Dokument.Seiten.Count == 1 ? "" : "n")}).");

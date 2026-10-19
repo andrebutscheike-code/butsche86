@@ -190,3 +190,127 @@ public class ImportTests
         }
     }
 }
+
+/// <summary>Tests mit echten Publisher-Dateien (Apache POI), die LibreOffice in Zeichnungen umgewandelt hat.</summary>
+public class PublisherImportTests
+{
+    private static string Testdatei(string name) => Path.Combine(AppContext.BaseDirectory, "Testdaten", name);
+
+    private static ImportErgebnis Lade(string name) => OdgImporter.Importieren(Testdatei(name), ausPublisher: true);
+
+    private static IEnumerable<Objekt> Alle(Dokument d) => d.Seiten.SelectMany(s => s.Alle());
+
+    [Fact]
+    public void Tabelle_WirdInTextfelderUmgewandelt()
+    {
+        var ergebnis = Lade("publisher-sample.odg");
+        var tabelle = ergebnis.Dokument.Seiten[1].Objekte.OfType<GruppeObjekt>().Single(g => g.Name == "Tabelle");
+        var texte = tabelle.Kinder.OfType<TextfeldObjekt>().Select(t => t.Text).ToList();
+        Assert.Equal(6, texte.Count);
+        Assert.Contains("Table on page 2", texte);
+        Assert.Contains("Bottom Right", texte);
+        // Zellen liegen zeilenweise untereinander
+        var zellen = tabelle.Kinder.OfType<TextfeldObjekt>().ToList();
+        Assert.Equal(zellen[0].Y, zellen[1].Y, 3);
+        Assert.True(zellen[2].Y > zellen[0].Y + 5);
+        Assert.True(zellen[1].X > zellen[0].X + 40);
+        Assert.Contains(ergebnis.Hinweise, h => h.Contains("Tabellen"));
+    }
+
+    [Fact]
+    public void TabellenVorschaubild_WirdNichtAlsBildUebernommen()
+    {
+        var dok = Lade("publisher-sample.odg").Dokument;
+        Assert.DoesNotContain(Alle(dok), o => o is BildObjekt);
+        Assert.Empty(dok.Medien);
+    }
+
+    [Fact]
+    public void BilderAlsFuellung_WerdenEingebettet()
+    {
+        var dok = Lade("publisher-brochure.odg").Dokument;
+        var mitBild = Alle(dok).OfType<FlaechenObjekt>().Where(o => o.FuellungBildId != null).ToList();
+        Assert.True(mitBild.Count >= 4, $"Füllbilder: {mitBild.Count}");
+        foreach (var o in mitBild)
+        {
+            var medium = dok.FindeMedium(o.FuellungBildId!);
+            Assert.NotNull(medium);
+            Assert.Contains(medium!.Endung, new[] { "png", "jpg", "gif", "bmp", "tif", "emf", "wmf" });
+            Assert.NotEmpty(medium.Daten);
+        }
+        // Zwei verschiedene Bildformate kommen in der Broschüre vor (Metadateien und Rasterbilder)
+        Assert.True(dok.Medien.Select(m => m.Endung).Distinct().Count() >= 2);
+    }
+
+    [Fact]
+    public void Broschuere_HatQuerformatUndZweiSeiten()
+    {
+        var dok = Lade("publisher-brochure.odg").Dokument;
+        Assert.Equal(2, dok.Seiten.Count);
+        Assert.Equal(297, dok.SeitenBreite, 0);
+        Assert.Equal(210, dok.SeitenHoehe, 0);
+        var schriften = Alle(dok).OfType<TextTraeger>().SelectMany(t => t.Absaetze).SelectMany(a => a.Laeufe).Select(l => l.Schriftart).Distinct().ToList();
+        Assert.Contains("Gill Sans MT", schriften);
+        Assert.Contains("Garamond", schriften);
+    }
+
+    [Fact]
+    public void Textrahmen_BehaltenIhreUrspruenglicheGroesse()
+    {
+        // LibreOffice dehnt Rahmen bei langem Text bis über den Seitenrand; Publisher zeigt nur den Inhalt des Rahmens.
+        var dok = Lade("publisher-brochure.odg").Dokument;
+        foreach (var t in Alle(dok).OfType<TextfeldObjekt>())
+            Assert.True(t.Y + t.Hoehe <= dok.SeitenHoehe + 1, $"Textfeld ragt über die Seite: y={t.Y}, h={t.Hoehe}");
+    }
+
+    [Fact]
+    public void ObjekteLiegenAufDerSeite()
+    {
+        foreach (var name in new[] { "publisher-sample.odg", "publisher-brochure.odg", "publisher-bild.odg" })
+        {
+            var dok = Lade(name).Dokument;
+            foreach (var seite in dok.Seiten)
+                foreach (var o in seite.Objekte)
+                {
+                    Assert.True(o.Breite >= 0 && o.Hoehe >= 0, $"{name}: negative Größe");
+                    Assert.True(o.X > -1 && o.Y > -1 && o.X < dok.SeitenBreite && o.Y < dok.SeitenHoehe, $"{name}: Objekt außerhalb der Seite ({o.X}, {o.Y})");
+                }
+        }
+    }
+
+    [Fact]
+    public void ImportiertesDokument_UeberstehtSpeichernUndLaden()
+    {
+        var dok = Lade("publisher-brochure.odg").Dokument;
+        using var ms = new MemoryStream();
+        Seitenwerk.Core.Dateiformat.DokumentSpeicher.Speichern(dok, ms);
+        ms.Position = 0;
+        var geladen = Seitenwerk.Core.Dateiformat.DokumentSpeicher.Laden(ms);
+        Assert.Equal(Alle(dok).Count(), Alle(geladen).Count());
+        Assert.Equal(dok.Medien.Count, geladen.Medien.Count);
+        Assert.Equal(
+            Alle(dok).OfType<FlaechenObjekt>().Count(o => o.FuellungBildId != null),
+            Alle(geladen).OfType<FlaechenObjekt>().Count(o => o.FuellungBildId != null));
+        Assert.Equal(
+            Alle(dok).OfType<FlaechenObjekt>().Select(o => (o.Fuellung, o.Rahmenfarbe)),
+            Alle(geladen).OfType<FlaechenObjekt>().Select(o => (o.Fuellung, o.Rahmenfarbe)));
+    }
+
+    [Fact]
+    public async Task EchteDatei_UeberLibreOffice_WirdGeoeffnet()
+    {
+        var soffice = PubImport.FindeLibreOffice();
+        if (soffice == null && Environment.GetEnvironmentVariable("SEITENWERK_LO_ERFORDERLICH") == "1")
+            Assert.Fail("LibreOffice wird für diesen Test benötigt, wurde aber nicht gefunden.");
+        if (soffice == null)
+            return; // ohne LibreOffice entfällt der Test
+
+        foreach (var (datei, seiten) in new[] { ("publisher-sample.pub", 2), ("publisher-brochure.pub", 2) })
+        {
+            var ergebnis = await PubImport.ImportierenAsync(Testdatei(datei), soffice);
+            Assert.Equal(seiten, ergebnis.Dokument.Seiten.Count);
+            Assert.Equal(Path.GetFileNameWithoutExtension(datei), ergebnis.Dokument.Titel);
+            Assert.NotEmpty(Alle(ergebnis.Dokument));
+        }
+    }
+}

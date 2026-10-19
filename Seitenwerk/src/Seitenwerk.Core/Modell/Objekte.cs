@@ -94,6 +94,9 @@ public abstract class FlaechenObjekt : Objekt
     /// <summary>Füllfarbe als "#RRGGBB" oder "#AARRGGBB"; null = keine Füllung.</summary>
     public string? Fuellung { get; set; }
 
+    /// <summary>Füllung mit einem eingebetteten Bild (Id aus <see cref="Dokument.Medien"/>), dehnt sich auf die Form. Hat Vorrang vor <see cref="Fuellung"/>.</summary>
+    public string? FuellungBildId { get; set; }
+
     /// <summary>Rahmenfarbe; null = kein Rahmen.</summary>
     public string? Rahmenfarbe { get; set; }
 

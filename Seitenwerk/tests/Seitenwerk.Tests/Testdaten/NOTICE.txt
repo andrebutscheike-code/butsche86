@@ -1,0 +1,15 @@
+Testdaten
+
+publisher-sample.pub, publisher-brochure.pub
+  Echte Microsoft-Publisher-Dateien aus den Testdaten von Apache POI (test-data/publisher/Sample.pub und SampleBrochure.pub),
+  veröffentlicht unter der Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
+
+publisher-sample.odg, publisher-brochure.odg, publisher-bild.odg
+  Mit LibreOffice 24.2 (Import-Filter libmspub) aus Publisher-Dateien von Apache POI (Sample.pub, SampleBrochure.pub, 51318.pub)
+  erzeugte OpenDocument-Zeichnungen. Dieselbe Lizenz wie die Ausgangsdateien.
+
+lo-zeichnung.odg, lo-flach.fodg
+  Mit LibreOffice per Skript erzeugte Zeichnung (eigene Testdatei).
+
+foto.jpg, grafik.png
+  Selbst erzeugte Testbilder.
