@@ -1,0 +1,51 @@
+name: Seitenwerk bauen
+
+on:
+  push:
+    paths:
+      - "Seitenwerk/**"
+      - ".github/workflows/build-seitenwerk.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Tests (Modell, Speichern, Import, PDF)
+        run: dotnet test Seitenwerk/tests/Seitenwerk.Tests -c Release --logger "console;verbosity=normal"
+
+      - name: EXE veröffentlichen
+        run: >
+          dotnet publish Seitenwerk/src/Seitenwerk -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+          -o publish
+
+      - name: Selbsttest (Fenster aufbauen, Seiten rendern, Befehle ausführen)
+        shell: pwsh
+        run: |
+          $ordner = Join-Path $PWD "selbsttest-ausgabe"
+          New-Item -ItemType Directory -Force -Path $ordner | Out-Null
+          $p = Start-Process -FilePath ".\publish\Seitenwerk.exe" -ArgumentList @("--selbsttest", $ordner) -PassThru
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); Write-Host "Zeitüberschreitung im Selbsttest"; $code = 99 } else { $code = $p.ExitCode }
+          if (Test-Path "$ordner\selbsttest.log") { Get-Content "$ordner\selbsttest.log" } else { Write-Host "Kein Protokoll geschrieben" }
+          if ($code -ne 0) { Write-Host "Selbsttest fehlgeschlagen, Exitcode $code"; exit 1 }
+
+      - name: Ergebnis des Selbsttests hochladen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Seitenwerk-Selbsttest
+          path: selbsttest-ausgabe
+
+      - name: Programm hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Seitenwerk
+          path: publish/Seitenwerk.exe

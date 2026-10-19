@@ -1,0 +1,61 @@
+<Window x:Class="Seitenwerk.Dialoge.FarbDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Farbe wählen" SizeToContent="WidthAndHeight" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+    <Grid Margin="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Width="280">
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="24"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="36"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="R" VerticalAlignment="Center"/>
+                <Slider x:Name="RotRegler" Grid.Column="1" Minimum="0" Maximum="255" SmallChange="1" LargeChange="16" ValueChanged="ReglerGeaendert"/>
+                <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=RotRegler, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            </Grid>
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="24"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="36"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="G" VerticalAlignment="Center"/>
+                <Slider x:Name="GruenRegler" Grid.Column="1" Minimum="0" Maximum="255" SmallChange="1" LargeChange="16" ValueChanged="ReglerGeaendert"/>
+                <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=GruenRegler, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            </Grid>
+            <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="24"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="36"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="B" VerticalAlignment="Center"/>
+                <Slider x:Name="BlauRegler" Grid.Column="1" Minimum="0" Maximum="255" SmallChange="1" LargeChange="16" ValueChanged="ReglerGeaendert"/>
+                <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=BlauRegler, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            </Grid>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Hex:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBox x:Name="HexBox" Width="90" TextChanged="HexGeaendert"/>
+                <Border x:Name="Vorschau" Width="80" Height="26" Margin="16,0,0,0" BorderBrush="Gray" BorderThickness="1"/>
+            </StackPanel>
+        </StackPanel>
+
+        <WrapPanel x:Name="Palette" Grid.Column="1" Width="196" Margin="16,0,0,0"/>
+
+        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="OK" Width="90" Margin="0,0,8,0" IsDefault="True" Click="OkKlick"/>
+            <Button Content="Abbrechen" Width="90" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -1,4 +1,11 @@
-# Publisher nach Word
+# Publisher nach Word und Seitenwerk
+
+Dieses Repository enthält zwei Programme:
+
+- **Seitenwerk** (Ordner `Seitenwerk/`): Layoutprogramm für Windows im Stil von Microsoft Publisher, das `.pub`-Dateien öffnen kann. Siehe [Seitenwerk/README.md](Seitenwerk/README.md).
+- **Publisher nach Word** (unten): wandelt `.pub`-Dateien in Word-Dateien um.
+
+## Publisher nach Word
 
 Wandelt Microsoft-Publisher-Dateien (`.pub`) in Word-Dateien (`.docx`) um – unabhängig davon, ob Publisher noch installiert ist.
 
