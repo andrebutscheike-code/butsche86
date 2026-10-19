@@ -77,6 +77,28 @@ public class ModellTests
     }
 
     [Fact]
+    public void KeineFuellungUndKeinRahmen_UeberlebenSpeichernUndMomentaufnahme()
+    {
+        var dok = Dokument.Neu();
+        // FormObjekt hat standardmäßig Füllung und Rahmen; null bedeutet bewusst "keine".
+        dok.Seiten[0].Objekte.Add(new FormObjekt { Breite = 10, Hoehe = 10, Fuellung = null, Rahmenfarbe = null });
+        dok.Seiten[0].Objekte.Add(new TextfeldObjekt { Breite = 10, Hoehe = 10, Fuellung = null, Rahmenfarbe = null });
+
+        using var ms = new MemoryStream();
+        DokumentSpeicher.Speichern(dok, ms);
+        ms.Position = 0;
+        var geladen = DokumentSpeicher.Laden(ms);
+        var snapshot = DokumentSpeicher.AusMomentaufnahme(DokumentSpeicher.Momentaufnahme(dok), dok.Medien);
+
+        foreach (var d in new[] { geladen, snapshot })
+            foreach (var o in d.Seiten[0].Objekte.OfType<FlaechenObjekt>())
+            {
+                Assert.Null(o.Fuellung);
+                Assert.Null(o.Rahmenfarbe);
+            }
+    }
+
+    [Fact]
     public void Speichern_EntferntNichtVerwendeteBilder()
     {
         var dok = Beispiel();

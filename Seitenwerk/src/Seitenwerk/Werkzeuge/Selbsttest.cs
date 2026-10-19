@@ -167,6 +167,38 @@ internal static class Selbsttest
         return anzahl;
     }
 
+    /// <summary>Grobe Textdarstellung eines Bilds, damit das Aussehen im Protokoll beurteilt werden kann.</summary>
+    private static string Ascii(BitmapSource bild, int spalten, int zeilen)
+    {
+        var grau = new FormatConvertedBitmap(bild, PixelFormats.Gray8, null, 0);
+        var b = grau.PixelWidth;
+        var h = grau.PixelHeight;
+        var daten = new byte[b * h];
+        grau.CopyPixels(daten, b, 0);
+        const string zeichen = " .:-=+*#%@";
+        var sb = new StringBuilder();
+        for (var z = 0; z < zeilen; z++)
+        {
+            for (var sp = 0; sp < spalten; sp++)
+            {
+                int x0 = sp * b / spalten, x1 = Math.Max(x0 + 1, (sp + 1) * b / spalten);
+                int y0 = z * h / zeilen, y1 = Math.Max(y0 + 1, (z + 1) * h / zeilen);
+                long summe = 0;
+                var anzahl = 0;
+                for (var y = y0; y < y1 && y < h; y++)
+                    for (var x = x0; x < x1 && x < b; x++)
+                    {
+                        summe += daten[y * b + x];
+                        anzahl++;
+                    }
+                var hell = anzahl == 0 ? 255 : (int)(summe / anzahl);
+                sb.Append(hell >= 248 ? ' ' : zeichen[Math.Clamp((255 - hell) * zeichen.Length / 256, 1, zeichen.Length - 1)]);
+            }
+            sb.AppendLine();
+        }
+        return sb.ToString();
+    }
+
     private static async Task Ablauf(Application app, string ausgabe)
     {
         Zeile($"Selbsttest gestartet, Ausgabe: {ausgabe}");
@@ -190,6 +222,8 @@ internal static class Selbsttest
         fensterBild.Render(fenster);
         File.WriteAllBytes(Path.Combine(ausgabe, "fenster.png"), Exporter.AlsPng(fensterBild));
         Pruefe(NichtWeisse(fensterBild) > 20000, "Fenster enthält sichtbare Oberfläche");
+        Zeile("Fenster (grob):");
+        Zeile(Ascii(fensterBild, 150, 52));
 
         // ------------------------------------------------ Rendern
         var seite1 = Exporter.RenderSeite(dokument, dokument.Seiten[0], 100);
@@ -198,6 +232,8 @@ internal static class Selbsttest
         Pruefe(gefuellt > seite1.PixelWidth * seite1.PixelHeight / 10, $"Seite 1 gerendert ({seite1.PixelWidth}×{seite1.PixelHeight}, {gefuellt} farbige Pixel)");
         var seite2 = Exporter.RenderSeite(dokument, dokument.Seiten[1], 50);
         Pruefe(seite2.PixelWidth > 100, "Seite 2 gerendert");
+        Zeile("Seite 1 (grob):");
+        Zeile(Ascii(seite1, 90, 60));
         File.WriteAllBytes(Path.Combine(ausgabe, "seite2.png"), Exporter.AlsPng(seite2));
 
         var vorschau = Exporter.Vorschau(dokument, dokument.Seiten[0], 240);
@@ -336,7 +372,7 @@ internal static class Selbsttest
         Pruefe(d1 != null && d2.Farbe == "#FF8800" && d3 != null, "Dialoge lassen sich erzeugen");
 
         var symbolFehler = 0;
-        foreach (var feld in typeof(Symbole).GetFields().Where(f => f.IsLiteral && f.FieldType == typeof(string)))
+        foreach (var feld in typeof(Symbole).GetFields().Where(f => f.IsLiteral && f.FieldType == typeof(string) && f.Name != nameof(Symbole.SymbolSchrift)))
         {
             try
             {

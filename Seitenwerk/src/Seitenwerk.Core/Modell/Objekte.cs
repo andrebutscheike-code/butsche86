@@ -293,7 +293,7 @@ public static class ModellJson
     public static readonly JsonSerializerOptions Optionen = new()
     {
         WriteIndented = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // Null-Werte müssen mitgeschrieben werden: "keine Füllung" ist etwas anderes als der Standardwert einer Form.
         Converters = { new JsonStringEnumConverter() },
     };
 
