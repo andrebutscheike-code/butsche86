@@ -11,12 +11,15 @@ Im selben Lauf steht unter **Seitenwerk-Selbsttest** ein Protokoll samt Bildschi
 
 ## Publisher-Dateien (.pub) öffnen
 
-Das Publisher-Format ist nicht öffentlich verständlich dokumentiert. Seitenwerk lässt die Datei deshalb von **LibreOffice** (Import-Filter `libmspub`) im Hintergrund in eine Zeichnung umwandeln und liest Textfelder, Bilder, Formen und Linien als einzeln bearbeitbare Objekte ein.
+Das Publisher-Format ist nicht öffentlich verständlich dokumentiert. Seitenwerk lässt die Datei deshalb von **LibreOffice** (Import-Filter `libmspub`) im Hintergrund in eine Zeichnung umwandeln und liest daraus Textfelder, Bilder, Formen, Linien und Tabellen als einzeln bearbeitbare Objekte ein.
 
-- LibreOffice muss installiert sein ([Download](https://de.libreoffice.org/download/download-libreoffice/)). Es wird nicht geöffnet, nur im Hintergrund benutzt. Findet Seitenwerk es nicht, fragt das Programm nach.
-- Das Ergebnis kann vom Original abweichen: Schriftarten, Abstände, Farbverläufe (werden einfarbig), Bildfüllungen, Schatten und Effekte. Metadateien (WMF/EMF) werden als Bild übernommen, StarView-Metadateien (SVM) nicht.
-- Eine `.pub`-Datei lässt sich nicht zurückschreiben. Speichern Sie importierte Dateien als `.swk` (Seitenwerk-Format), Export als PDF oder PNG ist möglich.
+- LibreOffice muss installiert sein ([Download](https://de.libreoffice.org/download/download-libreoffice/)). Es wird nicht geöffnet, nur im Hintergrund benutzt. Findet Seitenwerk es nicht, fragt das Programm nach. Unter **Datei → LibreOffice für .pub-Dateien festlegen** lässt sich der Ort wählen.
+- Das Ergebnis kann vom Original abweichen. Es hängt davon ab, was LibreOffice aus der Datei macht. Bekannte Unterschiede: Schriftarten, die auf dem Computer fehlen, werden ersetzt; Farbverläufe werden einfarbig; Schatten und Effekte fehlen; Tabellen werden zu einer Gruppe aus Textfeldern (eine Zelle = ein Textfeld); Text, der nicht in einen Rahmen passt, wird abgeschnitten (rote Markierung am Rahmen), und der Textfluss in verbundene Rahmen wird nicht übernommen.
+- Grafiken im Format SVM oder SVG werden mit Hinweis ausgelassen. WMF/EMF-Cliparts werden als Bild übernommen.
+- Eine `.pub`-Datei lässt sich nicht zurückschreiben. Speichern Sie importierte Dateien als `.swk` (Seitenwerk-Format); Export als PDF oder PNG ist möglich.
 - Passwortgeschützte oder beschädigte Dateien meldet das Programm als Fehler.
+
+Getestet wurde mit echten Publisher-Dateien aus den Testdaten von Apache POI (Apache License 2.0; siehe `Seitenwerk/tests/Seitenwerk.Tests/Testdaten/NOTICE.txt`), darunter eine Broschüre mit Cliparts, Fotos, Gruppen und mehreren Schriftarten sowie ein Dokument mit Tabelle. Andere Dateien können sich anders verhalten.
 
 Außerdem lassen sich OpenDocument-Zeichnungen (`.odg`) öffnen.
 
@@ -36,16 +39,23 @@ Maus: Ziehen verschiebt, Eckgriffe skalieren (Umschalt hält das Seitenverhältn
 
 ## Nicht enthalten
 
-Tabellen, Textfluss zwischen verbundenen Textfeldern, Spalten in Textfeldern, Musterseiten, Seitenzahl-Felder, WordArt, Farbverläufe und Schatten, Seriendruck, Zurückschreiben nach `.pub`. PDF-Export legt jede Seite als hochauflösendes Bild (300 dpi) in das PDF; der Text ist darin nicht auswählbar. Für ein PDF mit auswählbarem Text beim Drucken den Drucker „Microsoft Print to PDF“ wählen.
+Echte Tabellen (importierte werden zu Textfeldern), Textfluss zwischen verbundenen Textfeldern, Spalten in Textfeldern, Musterseiten, Seitenzahl-Felder, WordArt, Farbverläufe und Schatten, Seriendruck, Zurückschreiben nach `.pub`. PDF-Export legt jede Seite als hochauflösendes Bild (300 dpi) in das PDF; der Text ist darin nicht auswählbar. Für ein PDF mit auswählbarem Text beim Drucken den Drucker „Microsoft Print to PDF“ wählen.
 
 ## Entwicklung
 
 ```
-dotnet test Seitenwerk/tests/Seitenwerk.Tests       # Modell, Speichern, Import, PDF (läuft auch unter Linux)
+dotnet test Seitenwerk/tests/Seitenwerk.Tests       # Modell, Speichern, Import, PDF (läuft auch unter Linux; mit installiertem LibreOffice auch das Öffnen echter .pub-Dateien)
 dotnet run --project Seitenwerk/src/Seitenwerk      # nur unter Windows
 Seitenwerk.exe --selbsttest ORDNER                  # Fenster aufbauen, rendern, Befehle prüfen, Protokoll und Bilder in ORDNER
+                                                    # (mit SEITENWERK_TEST_PUBS=Ordner werden dessen .pub-Dateien zusätzlich geöffnet)
 ```
 
 - `src/Seitenwerk.Core` (plattformunabhängig): Dokumentmodell, Dateiformat `.swk` (ZIP mit `dokument.json` und `medien/`), ODG-/PUB-Import, Rückgängig-Verlauf, Ausrichten/Gruppieren, PDF-Schreiber.
 - `src/Seitenwerk` (WPF, .NET 10): Menüband, Seitenansicht, Zeichnen, Textbearbeitung, Export, Druck.
 - `tests/Seitenwerk.Tests`: Modultests; `Testdaten/lo-zeichnung.odg` ist eine mit LibreOffice erzeugte Zeichnung.
+
+## Stand der Prüfung
+
+Auf einem Windows-Rechner (GitHub Actions) automatisch geprüft: Fenster und Menüband laden, alle Menübefehle sind belegt, Seiten rendern, Speichern/Laden, Rückgängig/Wiederholen, Gruppieren, Ausrichten, Seitenverwaltung, Textbearbeitung im Feld, PDF/PNG-Export, Druckseiten, Zwischenablage und das Öffnen echter `.pub`-Dateien mit allen Bildern.
+
+Nicht automatisch geprüft ist die Bedienung mit der Maus im laufenden Fenster (Ziehen, Skalieren, Drehen, Einrasten, Zeichnen neuer Objekte), das Aussehen des Menübands im Einzelnen und der Druck auf einem echten Drucker.
